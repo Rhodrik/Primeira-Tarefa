@@ -126,6 +126,9 @@
   <data name="EM003" xml:space="preserve">
     <value>The {PropertyName} cannot exceed the current date</value>
   </data>
+  <data name="EM004" xml:space="preserve">
+    <value>The  {PropertyName} provided has not yet been registered</value>
+  </data>
   <data name="EM400" xml:space="preserve">
     <value>One or more validation errors were detected</value>
   </data>

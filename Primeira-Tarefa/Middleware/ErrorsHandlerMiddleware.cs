@@ -19,6 +19,7 @@ namespace Primeira_Tarefa.Middleware
             {
                 await _next(context);
             }
+
             catch (ValidationException validationexception)
             {
                 context.Response.ContentType = "application/json";
@@ -35,6 +36,7 @@ namespace Primeira_Tarefa.Middleware
 
                 await context.Response.WriteAsync(result);
             }
+
             catch (Exception ex)
             {
                 context.Response.ContentType = "application/json";

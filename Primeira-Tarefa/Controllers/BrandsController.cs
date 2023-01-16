@@ -1,45 +1,29 @@
-﻿using AutoMapper;
-using FluentValidation;
-using FluentValidation.Results;
+﻿using Dommel;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Primeira_Tarefa.DataBase;
+using Primeira_Tarefa.DTO;
 using Primeira_Tarefa.DTO.BrandDTO;
-using Primeira_Tarefa.DTO.GroupDTO;
-using Primeira_Tarefa.Map;
 using Primeira_Tarefa.Payloads.BrandPayloads;
-using Primeira_Tarefa.Payloads.GroupPayloads;
+using Primeira_Tarefa.Services.Commands.BrandCommands;
+using Primeira_Tarefa.Services.Queries.BrandQueries;
 using Primeira_Tarefa.Types;
-using Primeira_Tarefa.Validators.BrandValidators;
-using System.Collections.Generic;
 
 namespace Primeira_Tarefa.Controllers
 {
     [Route("[controller]/")]
-    public class BrandsController : ControllerBase
+    public class BrandController : ControllerBase
     {
-        private readonly BrandDataBase _brandDataBase;
-        private readonly IMapper _mapper;
-        private readonly IValidator<BrandInsertPayload> _insertvalidator;
-        private readonly IValidator<BrandUpdatePayload> _updatevalidator;
-        private readonly IValidator<BrandSearchPayload> _searchvalidator;
-        private readonly IValidator<BrandGetByIdPayload> _getbyidvalidator;
+        private readonly Serilog.ILogger _logger;
+        private readonly IMediator _mediator;
 
-        public BrandsController
+        public BrandController
             (
-            BrandDataBase brandDataBase,
-            IMapper mapper,
-            IValidator<BrandInsertPayload> insertvalidator,
-            IValidator<BrandUpdatePayload> updatevalidator,
-            IValidator<BrandSearchPayload> searchvalidator,
-            IValidator<BrandGetByIdPayload> getbyidvalidator
+            Serilog.ILogger logger,
+            IMediator mediator
             )
         {
-            _brandDataBase = brandDataBase;
-            _mapper = mapper;
-            _insertvalidator = insertvalidator;
-            _updatevalidator = updatevalidator;
-            _searchvalidator = searchvalidator;
-            _getbyidvalidator = getbyidvalidator;
+            _logger = logger;
+            _mediator = mediator;
         }
 
         /// <summary>
@@ -52,28 +36,17 @@ namespace Primeira_Tarefa.Controllers
         /// To update an existing brand use the update route
         /// </para>
         /// </remarks>
-
         [HttpPost]
         [Route("")]
-        public ActionResult<int> Incert([FromBody] BrandInsertPayload payload)
+        public async Task<ActionResult<BrandInsertPayload>> InsertIntoPostgres([FromBody] BrandInsertPayload payload)
         {
-            _insertvalidator.ValidateAndThrow(payload);
-            // Exceção Generica a ser tratada, com o catch do ErrorHandlerMiddleWere:
-            //throw new Exception("*******");
+            BrandInsertCommand command = new BrandInsertCommand(payload);
+            _logger.Information("The payload data for insertion has been sent to the command successfully");
 
-            Brand brandmap = _mapper.Map<Brand>(payload);
-            Brand brand = new Brand()
-            {
-                Id = _brandDataBase.BrandList.Count() + 1,
-                Description = payload.Description,
-                Status = payload.Status,
-                MainProvider_Name = payload.MainProvider_Name,
-                Since = payload.Since
-            };
+            await _mediator.Send(command);
+            _logger.Information("The insert command has been invoked successfully");
 
-            _brandDataBase.BrandList.Add(brand);
-
-            return Created("", brand.Id);
+            return Ok();
         }
 
         /// <summary>
@@ -81,14 +54,19 @@ namespace Primeira_Tarefa.Controllers
         /// </summary>
         [HttpGet]
         [Route("all")]
-        public ActionResult<List<Brand>> GetAll()
+        public async Task<ActionResult<List<Brand>>> GetAll()
         {
-            if (_brandDataBase.BrandList.Count == 0)
-            {
-                return NoContent();
-            }
+            BrandGetAllQueries command = new BrandGetAllQueries();
+            _logger.Information("The command has been successfully instantiated");
 
-            return Ok(_brandDataBase.BrandList);
+            IEnumerable<Brand> dto = await _mediator.Send(command);
+            _logger.Information("A list of all brands has been successfully created");
+
+            if (!dto.Any())
+                return NoContent();
+            _logger.Information("Validation was successfully performed to check if the list contains any records");
+
+            return Ok(dto);
         }
 
         /// <summary>
@@ -102,16 +80,18 @@ namespace Primeira_Tarefa.Controllers
         /// </para>
         /// </remarks>
         [HttpGet]
-        [Route("byid/{Id:int}")]
-        public ActionResult<int> GetById([FromRoute(Name = "Id")] int id)
+        [Route("get/{Id:int}")]
+        public async Task<ActionResult<Brand>> ByidFromPostgres([FromRoute] int id)
         {
-            BrandGetByIdPayload payload = new BrandGetByIdPayload();
+            //BrandGetByIdQueries
+            BrandGetByIdQueries command = new BrandGetByIdQueries(id);
+            _logger.Information("The command has been successfully instantiated with the search id");
+            Brand brand = await _mediator.Send(command);
+            _logger.Information("The data searched has been returned by the command");
 
-            payload.SetId(id);
-
-            _getbyidvalidator.ValidateAndThrow(payload);
-
-            Brand brand = _brandDataBase.BrandList.FirstOrDefault(x => x.Id == id);
+            if (brand == null)
+                return NoContent();
+            _logger.Information("Validation was successfully performed to check if the data contains any records");
 
             return Ok(brand);
         }
@@ -127,23 +107,19 @@ namespace Primeira_Tarefa.Controllers
         /// </remarks>
         [HttpGet]
         [Route("actives")]
-        public ActionResult<List<Brand>> GetAllActives()
+        public async Task<ActionResult<List<BrandActivesDTO>>> GetAllActives()
         {
-            IEnumerable<Brand> actives = _brandDataBase.BrandList.Where(x => x.Status);
-            if (!actives.Any())
+            BrandGetActivesQueries command = new BrandGetActivesQueries();
+            _logger.Information("The command has been successfully instantiated");
+
+            IEnumerable<BrandActivesDTO> dto = await _mediator.Send(command);
+            _logger.Information("A list of all the active brands has been successfully created");
+
+            if (!dto.Any())
                 return NoContent();
-            IEnumerable<BrandActivesDTO> dto = actives.Select(brand =>
-            {
-                return new BrandActivesDTO
-                {
-                    Id = brand.Id,
-                    Description = brand.Description,
-                };
-            });
+            _logger.Information("Validation was successfully performed to check if the list contains any records");
 
-            IEnumerable<BrandActivesDTO> brandmap = _mapper.Map<IEnumerable<BrandActivesDTO>>(actives);
-
-            return Ok(brandmap);
+            return Ok(dto);
         }
 
         /// <summary>
@@ -161,25 +137,19 @@ namespace Primeira_Tarefa.Controllers
         /// </remarks>
         [HttpGet]
         [Route("search")]
-        public ActionResult<List<Brand>> Search([FromQuery] BrandSearchPayload payload)
+        public async Task<ActionResult<BasePagedSearchDTO<BrandSearchDTO>>> Search([FromQuery] BrandSearchPayload payload)
         {
-            IEnumerable<Brand> brands = _brandDataBase.BrandList.Where(x => x.Status == payload.Status);
+            BrandSearchQueries command = new BrandSearchQueries(payload);
 
-            _searchvalidator.ValidateAndThrow(payload);
-
-            brands = brands.Where(x => x.Description == payload.Description);
-            brands = brands.Where(x => x.MainProvider_Name == payload.MainProvider_Name);
-
-
-            IEnumerable<Brand> brandmap = _mapper.Map<IEnumerable<Brand>>(brands);
-
-            return Ok(brandmap);
+            BasePagedSearchDTO<BrandSearchDTO> dTOs = await _mediator.Send(command);
+            
+            return Ok(dTOs);
         }
 
         /// <summary>
         /// Updates the data of the selected brand
         /// </summary>
-        /// <param name="Id"> Brand Id to be searched</param>
+        /// <param name="Id"> Brand Id to be searched</param>   
         /// <param name="payload">Brand data to be updated</param>
         /// <remarks>
         /// Updates the data of the selected Brand.
@@ -189,19 +159,17 @@ namespace Primeira_Tarefa.Controllers
         /// </remarks>
         [HttpPut]
         [Route("{Id:int}")]
-        public ActionResult<int> Upload(
-            [FromRoute(Name = "Id")] int Id,
+        public async Task<ActionResult<int>> Upload(
+            [FromRoute] int id,
             [FromBody] BrandUpdatePayload payload)
         {
-            _updatevalidator.ValidateAndThrow(payload);
-            Brand? brand = _brandDataBase.BrandList.First(x => x.Id == Id);
+            BrandUpdateCommand command = new BrandUpdateCommand(payload, id);
+            _logger.Information("The necessary data for the update has been sent to the command successfully");
 
-            brand.Description = payload.Description;
-            brand.Status = payload.Status;
-            brand.MainProvider_Name = payload.MainProvider_Name;
-            brand.Since = payload.Since;
+            await _mediator.Send(command);
+            _logger.Information("The update command has been invoked successfully");
 
-            return NoContent();
+            return Ok();
         }
     }
 }

@@ -1,40 +1,33 @@
 ﻿using AutoMapper;
-using FluentValidation;
-using FluentValidation.Results;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Primeira_Tarefa.DataBase;
+using Primeira_Tarefa.DTO;
 using Primeira_Tarefa.DTO.GroupDTO;
 using Primeira_Tarefa.Payloads.GroupPayloads;
-using Primeira_Tarefa.Validators.BrandValidators;
-using Primeira_Tarefa.Validators.GroupValidators;
-using System.Collections.Generic;
-using System.Text.RegularExpressions;
+using Primeira_Tarefa.Services.Commands.GroupCommands;
+using Primeira_Tarefa.Services.Queries.GroupQueries;
 
 namespace Primeira_Tarefa.Controllers
 {
     [Route("[controller]/")]
     public class GroupController : ControllerBase
     {
-        private readonly GroupDatabase _groupDatabase;
+
+        private readonly Serilog.ILogger _logger;
         private readonly IMapper _mapper;
-        private readonly IValidator<GroupInsertPayload> _insertvalidator;
-        private readonly IValidator<GroupUpdatePayload> _updatevalidator;
-        private readonly IValidator<GroupSearchPayload> _searchvalidator;
+        IMediator _mediator;
+
 
         public GroupController
             (
-            GroupDatabase groupDatabase,
+            Serilog.ILogger logger,
             IMapper mapper,
-            IValidator<GroupInsertPayload> insertvalidator,
-            IValidator<GroupUpdatePayload> updatevalidator,
-            IValidator<GroupSearchPayload> searchvalidator
+            IMediator mediator
             )
         {
-            _groupDatabase = groupDatabase;
+            _logger = logger;
             _mapper = mapper;
-            _insertvalidator = insertvalidator;
-            _updatevalidator = updatevalidator;
-            _searchvalidator = searchvalidator;
+            _mediator = mediator;
         }
 
         /// <summary>
@@ -49,23 +42,15 @@ namespace Primeira_Tarefa.Controllers
         /// </remarks>        
         [HttpPost]
         [Route("")]
-        public ActionResult<int> Insert([FromBody] GroupInsertPayload payload)
+        public async Task<ActionResult<GroupInsertPayload>> InsertIntoPostgres([FromBody] GroupInsertPayload payload)
         {
-            _insertvalidator.ValidateAndThrow(payload);
+            GroupInsertCommand command = new GroupInsertCommand(payload);
+            _logger.Information("The payload data for insertion has been sent to the command successfully");
 
-            Group groupmap = _mapper.Map<Group>(payload);
+            await _mediator.Send(command);
+            _logger.Information("The insert command has been invoked successfully");
 
-            Group group = new Group()
-            {
-                Id = _groupDatabase.GroupList.Count() + 1,
-                Description = payload.Description,
-                Status = payload.Status,
-                UseSubgroup = payload.UseSubgroup,
-            };
-
-            _groupDatabase.GroupList.Add(groupmap);
-
-            return Created("", group.Id);
+            return Ok();
         }
 
         /// <summary>
@@ -83,18 +68,13 @@ namespace Primeira_Tarefa.Controllers
         /// </remarks>
         [HttpGet]
         [Route("search")]
-        public ActionResult<List<GroupSearchDTO>> Search([FromQuery] GroupSearchPayload payload)
+        public async Task<ActionResult<BasePagedSearchDTO<GroupSearchDTO>>> Search([FromQuery] GroupSearchPayload payload)
         {
-            IEnumerable<Group> groups = _groupDatabase.GroupList.Where(x => x.Status == payload.Status);
+            GroupSearchQueries command = new GroupSearchQueries(payload);
 
-            _searchvalidator.ValidateAndThrow(payload);
+            BasePagedSearchDTO<GroupSearchDTO> dTOs = await _mediator.Send(command);
 
-            groups = groups.Where(x => x.Description == payload.Description);
-            
-            IEnumerable<GroupSearchDTO> groupmap = _mapper.Map<IEnumerable<GroupSearchDTO>>(groups);
-
-            return Ok(groups);
-
+            return Ok(dTOs);
         }
 
         /// <summary>
@@ -104,33 +84,29 @@ namespace Primeira_Tarefa.Controllers
         /// Returns all groups with active status
         /// <para>
         /// To return groups based on other filters, consume the search route
-        /// </para>
+        /// </para>  
         /// </remarks>
         [HttpGet]
         [Route("actives")]
-        public ActionResult<List<Group>> GetAlActives()
+        public async Task<ActionResult<List<GroupActivesDTO>>> GetAllActives()
         {
-            IEnumerable<Group> actives = _groupDatabase.GroupList.Where(x => x.Status);
-            if (!actives.Any())
+            GroupGetActiveQueries command = new GroupGetActiveQueries();
+            _logger.Information("The command has been successfully instantiated");
+
+            IEnumerable<GroupActivesDTO> dto = await _mediator.Send(command);
+            _logger.Information("A list of all the active groups has been successfully created");
+
+            if (!dto.Any())
                 return NoContent();
-            IEnumerable<GroupActivesDTO> dto = actives.Select(group =>
-            {
-                return new GroupActivesDTO
-                {
-                    Id = group.Id,
-                    Description = group.Description,
-                };
-            });
+            _logger.Information("Validation was successfully performed to check if the list contains any records");
 
-            IEnumerable<GroupActivesDTO> groupmap = _mapper.Map<IEnumerable<GroupActivesDTO>>(actives);
-
-            return Ok(groupmap);
+            return Ok(dto);
         }
 
         /// <summary>
         /// Updates the data of the selected group
         /// </summary>
-        /// <param name="Id"> Group Id to be searched</param>
+        /// <param name="id"> Group Id to be searched</param>
         /// <param name="payload">Group data to be updated</param>
         /// <remarks>
         /// Updates the data of the selected Group.
@@ -140,20 +116,18 @@ namespace Primeira_Tarefa.Controllers
         /// </remarks>
         [HttpPut]
         [Route("{Id:int}")]
-        public ActionResult<int> Upload(
-            [FromRoute(Name = "Id")] int groupId, 
+        public async Task<ActionResult<int>> Upload(
+            [FromRoute] int id,
             [FromBody] GroupUpdatePayload payload)
         {
-            payload.SetId(groupId);
-            _updatevalidator.ValidateAndThrow(payload);
+            GroupUpdateCommand command = new GroupUpdateCommand(payload, id);
+            _logger.Information("The necessary data for the update has been sent to the command successfully");
 
-            Group group = _groupDatabase.GroupList.First(x => x.Id == groupId);
+            await _mediator.Send(command);
+            _logger.Information("The update command has been invoked successfully");
 
-            group.Description = payload.Description;
-            group.Status = payload.Status;
-            group.UseSubgroup = payload.UseSubgroup;
+            return Ok();
 
-            return NoContent();
         }
     }
 }

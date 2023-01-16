@@ -88,6 +88,15 @@ namespace Primeira_Tarefa.Errors {
         }
         
         /// <summary>
+        ///   Consulta uma cadeia de caracteres localizada semelhante a The  {PropertyName} provided has not yet been registered.
+        /// </summary>
+        public static string EM004 {
+            get {
+                return ResourceManager.GetString("EM004", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Consulta uma cadeia de caracteres localizada semelhante a One or more validation errors were detected.
         /// </summary>
         public static string EM400 {

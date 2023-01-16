@@ -1,71 +1,118 @@
 using FluentValidation;
 using Microsoft.OpenApi.Models;
 using Primeira_Tarefa.Controllers;
-using Primeira_Tarefa.DataBase;
 using Primeira_Tarefa.Middleware;
 using Primeira_Tarefa.Payloads.BrandPayloads;
-using Primeira_Tarefa.Payloads.GroupPayloads;
-using Primeira_Tarefa.Validators.GroupValidators;
-using Serilog.Events;
 using Serilog;
 using Swashbuckle.AspNetCore.Filters;
 using System.Reflection;
-using Unchase.Swashbuckle.AspNetCore.Extensions.Extensions;
+using Dapper.FluentMap;
+using Primeira_Tarefa.Database_Maps;
+using Dapper.FluentMap.Dommel;
+using Primeira_Tarefa.Database;
+using Primeira_Tarefa.Repository;
+using MediatR;
+using Primeira_Tarefa.Interfaces.Connections;
+using Primeira_Tarefa.Interfaces.Repositorys.Type_Repositorys;
+using Primeira_Tarefa.Interfaces;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddControllers();
-
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-
-//services.AddSwaggerExamplesFromAssemblyOf(typeof(MyExample));
-//services.AddSwaggerExamplesFromAssemblies(Assembly.GetEntryAssembly());
-builder.Services.AddSwaggerGen(x =>
+try 
 {
-    x.SwaggerDoc("v1", new OpenApiInfo { Title = "Teste de Documentacao" });
+    var builder = WebApplication.CreateBuilder(args);
 
+    Log.Logger = new LoggerConfiguration()
+        .ReadFrom.Configuration(builder.Configuration)
+        .CreateLogger();
 
-    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    builder.Host.UseSerilog(Log.Logger);
 
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    //Mediatr Config
+    builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
 
-    x.IncludeXmlComments(xmlPath);
-});
-builder.Services.AddSwaggerExamplesFromAssemblyOf<BrandInsertPayload>();
+    // Add services to the container.
+    builder.Services.AddControllers();
 
-Assembly? assembly = AppDomain.CurrentDomain.Load("Primeira-Tarefa");
-builder.Services.AddAutoMapper(assembly);
+    // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+    builder.Services.AddEndpointsApiExplorer();
 
-//Vai adicionar na injeção de dependência todos os validaors, igual no exemplo abaixo
-builder.Services.AddValidatorsFromAssemblyContaining<BrandsController>();
-//builder.Services.AddScoped<IValidator<GroupUpdatePayload>, GroupUpdatePayloadValidator>();
+    //services.AddSwaggerExamplesFromAssemblyOf(typeof(MyExample));
+    //services.AddSwaggerExamplesFromAssemblies(Assembly.GetEntryAssembly());
+    builder.Services.AddSwaggerGen(x =>
+    {
+        x.SwaggerDoc("v1", new OpenApiInfo { Title = "Documentação de API" });
 
-builder.Services.AddSingleton<BrandDataBase>();
-builder.Services.AddSingleton<GroupDatabase>();
+        var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
 
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(builder.Configuration)
-    .CreateLogger();
+        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
 
-builder.Host.UseSerilog(Log.Logger);
+        x.IncludeXmlComments(xmlPath);
+    });
+    builder.Services.AddSwaggerExamplesFromAssemblyOf<BrandInsertPayload>();
 
-var app = builder.Build();
+    Assembly? assembly = AppDomain.CurrentDomain.Load("Primeira-Tarefa");
+    builder.Services.AddAutoMapper(assembly);
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    //Vai adicionar na injeção de dependência todos os validaors, igual no exemplo abaixo
+    builder.Services.AddValidatorsFromAssemblyContaining<BrandController>();
+    builder.Services.AddValidatorsFromAssemblyContaining<BrandController>();
+    builder.Services.AddValidatorsFromAssemblyContaining<BrandController>();
+    //builder.Services.AddScoped<IValidator<GroupUpdatePayload>, GroupUpdatePayloadValidator>();
+
+    builder.Services.AddScoped<IPostgresConnection, PostgresDatabaseConnection>();
+    builder.Services.AddScoped<IBrandRepository, BrandRepository>();
+    builder.Services.AddScoped<IGroupRepository, GroupRepository>();
+    builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+    const string PolicyName = "Access-Control-Allow-Origin";
+
+    builder.Services.AddCors(options =>
+    {
+
+        options.AddPolicy(PolicyName, builder =>
+            builder
+                .AllowAnyOrigin()
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .WithExposedHeaders(new string[] { "Location", "Upload-Offset", "Upload-Length", "Content-Disposition" })
+        ); ;
+    });
+    
+    FluentMapper.Initialize(config =>
+    {
+        config.AddMap(new BrandDbMap());
+        config.AddMap(new GroupDbMap());
+        config.ForDommel();
+    });
+
+    WebApplication app = builder.Build();
+
+    Log.Information("Application built");
+
+    // Configure the HTTP request pipeline.
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+        Log.Information("Application configured with Swagger");
+    }
+
+    app.UseCors(PolicyName);
+    app.UseMiddleware<ErrorsHandlerMiddleware>();
+    app.UseHttpsRedirection();
+    app.UseAuthorization();
+    app.MapControllers();
+    app.Run();
+    Log.Information("Application started successfully");
 }
 
-app.UseMiddleware<ErrorsHandlerMiddleware>();
+catch
+{
+    Log.Fatal("The application has a fatal error");
+    throw;
+}
 
-app.UseHttpsRedirection();
-
-app.UseAuthorization();
-
-app.MapControllers();
-
-app.Run();
+finally
+{
+    Log.Information("Application being finalized");
+    Log.CloseAndFlush();
+}

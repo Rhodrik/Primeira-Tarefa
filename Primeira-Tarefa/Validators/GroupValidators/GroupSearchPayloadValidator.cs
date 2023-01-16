@@ -1,4 +1,5 @@
 ﻿using FluentValidation;
+using Primeira_Tarefa.Errors;
 using Primeira_Tarefa.Payloads.GroupPayloads;
 
 namespace Primeira_Tarefa.Validators.GroupValidators
@@ -9,6 +10,8 @@ namespace Primeira_Tarefa.Validators.GroupValidators
         {
             RuleFor(x => x.Description)
                 .MaximumLength(30)
+                    .WithMessage(ErrorCodes.EM002)
+                    .WithErrorCode(nameof(ErrorCodes.EM002))
                 .When(x => x.Description?.Length > 0);
         }
     }

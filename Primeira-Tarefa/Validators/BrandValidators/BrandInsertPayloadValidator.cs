@@ -17,20 +17,12 @@ namespace Primeira_Tarefa.Validators.BrandValidators
                     .WithErrorCode(nameof(ErrorCodes.EM002));
 
             RuleFor(x => x.MainProvider_Name)
-                .NotEmpty()
-                    .WithMessage(ErrorCodes.EM001)
-                    .WithErrorCode(nameof(ErrorCodes.EM001))
-                .WithName("Main Provider Name")
-
                 .MaximumLength(150)
                     .WithMessage(ErrorCodes.EM002)
                     .WithErrorCode(nameof(ErrorCodes.EM002))
                 .WithName("Main Provider Name");
 
             RuleFor(x => x.Since)
-                .NotEmpty()
-                    .WithMessage(ErrorCodes.EM001)
-                    .WithErrorCode(nameof(ErrorCodes.EM001))
                 .LessThan(DateTime.UtcNow)
                     .WithMessage(ErrorCodes.EM003)
                     .WithErrorCode(nameof(ErrorCodes.EM003))
